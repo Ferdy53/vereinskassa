@@ -7,23 +7,22 @@ import io
 # --- KONFIGURATION ---
 st.set_page_config(page_title="Vereins-Cockpit", layout="wide", page_icon="⛪")
 
+# DER LINK ZUR TABELLE (Fest eingebaut)
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1zV6UCDkalRRk9auLXYfJb_kMGEwUAJ_lUHxktNkyCOw/edit"
+
 # --- HILFSFUNKTIONEN ---
 def load_data(conn):
-    # Lädt Daten (ohne expliziten Worksheet-Namen, um Fehler zu vermeiden)
-    SHEET_ID = "https://docs.google.com/spreadsheets/d/1zV6UCDkalRRk9auLXYfJb_kMGEwUAJ_lUHxktNkyCOw/edit"
-    df = conn.read(usecols=list(range(8)), ttl=0)
+    # Wir zwingen ihn, diese URL zu nutzen
+    df = conn.read(spreadsheet=SHEET_URL, usecols=list(range(8)), ttl=0)
     df = df.dropna(how="all")
     
     # Datums-Konvertierung
     df["Datum"] = pd.to_datetime(df["Datum"], dayfirst=True, errors='coerce')
     
-    # Euro-Zeichen und Komma bereinigen (WICHTIGER FIX)
+    # Euro-Zeichen und Komma bereinigen
     if not df.empty:
-        # Wir wandeln alles in String um, entfernen '€' und tauschen Komma gegen Punkt
         df["Einnahme"] = df["Einnahme"].astype(str).str.replace('€', '', regex=False).str.replace(',', '.', regex=False)
         df["Ausgabe"] = df["Ausgabe"].astype(str).str.replace('€', '', regex=False).str.replace(',', '.', regex=False)
-        
-        # Jetzt in Zahlen umwandeln (Erzwingen)
         df["Einnahme"] = pd.to_numeric(df["Einnahme"], errors='coerce').fillna(0.0)
         df["Ausgabe"] = pd.to_numeric(df["Ausgabe"], errors='coerce').fillna(0.0)
         
@@ -31,7 +30,11 @@ def load_data(conn):
 
 # --- VERBINDUNG ---
 conn = st.connection("gsheets", type=GSheetsConnection)
-df = load_data(conn)
+try:
+    df = load_data(conn)
+except Exception as e:
+    st.error(f"Fehler beim Laden: {e}")
+    st.stop()
 
 # --- SIDEBAR MENÜ ---
 st.sidebar.title("⛪ Hatler Minis")
@@ -43,18 +46,12 @@ menu = st.sidebar.radio("Menü", ["📊 Cockpit & Journal", "✍️ Neue Buchung
 if menu == "📊 Cockpit & Journal":
     st.title("📊 Finanz-Übersicht")
     
-    # Berechnungen
     budget = df["Einnahme"].sum() - df["Ausgabe"].sum()
-    
-    # Bankstand (Nur Status 'Erledigt')
     real_df = df[df["Status"] == "Erledigt"]
     bank_real = real_df["Einnahme"].sum() - real_df["Ausgabe"].sum()
-    
-    # Offene Rechnungen
     offen_df = df[(df["Status"] == "Offen") & (df["Ausgabe"] > 0)]
     offen_summe = offen_df["Ausgabe"].sum()
 
-    # Anzeige
     col1, col2, col3 = st.columns(3)
     col1.metric("💰 Verfügbares Budget", f"{budget:,.2f} €")
     col2.metric("🏦 Kontostand (Real)", f"{bank_real:,.2f} €", delta=f"- {offen_summe:.2f} € offen", delta_color="inverse")
@@ -63,7 +60,6 @@ if menu == "📊 Cockpit & Journal":
     st.markdown("---")
     st.subheader("Buchungsjournal")
     
-    # Tabelle anzeigen
     display_df = df.copy()
     display_df["Datum"] = display_df["Datum"].dt.strftime("%d.%m.%Y")
     
@@ -95,7 +91,6 @@ elif menu == "✍️ Neue Buchung":
         konto_in = c1.selectbox("Konto", ["Bank", "Handkassa", "Minikonto"])
         rechnung_in = c2.checkbox("Rechnung vorhanden?", value=True)
         
-        # Status Logik
         status_default = "Offen" if konto_in == "Bank" else "Erledigt"
         status_in = c3.selectbox("Status", ["Offen", "Erledigt"], index=0 if status_default=="Offen" else 1)
         
@@ -109,7 +104,6 @@ elif menu == "✍️ Neue Buchung":
                 ausgabe_val = betrag_in if typ == "Ausgabe" else 0.0
                 rechnung_txt = "Ja" if rechnung_in else "Nein"
                 
-                # Neue Zeile erstellen
                 new_entry = pd.DataFrame([{
                     "Datum": datum_in.strftime("%Y-%m-%d"),
                     "Anlass_Person": anlass_in,
@@ -121,13 +115,12 @@ elif menu == "✍️ Neue Buchung":
                     "Status": status_in
                 }])
                 
-                # Anhängen
                 updated_df = pd.concat([df, new_entry], ignore_index=True)
                 
-                # SPEICHERN (Ohne Try/Except Block, damit Fehler 200 ignoriert wird)
-                conn.update(worksheet="Buchungen", data=updated_df)
+                # AUCH HIER: URL direkt übergeben!
+                conn.update(spreadsheet=SHEET_URL, worksheet="Buchungen", data=updated_df)
                 
-                st.success("Gespeichert! Bitte Seite neu laden (F5) für Update.")
+                st.success("Gespeichert! Bitte Seite neu laden (F5).")
 
 # ==============================================================================
 # 3. OFFENE ZAHLUNGEN
@@ -142,15 +135,14 @@ elif menu == "💸 Offene Zahlungen":
         st.success("Alles erledigt! 🎉")
     else:
         st.dataframe(todos)
-        
         entry_to_close = st.selectbox("Welchen Eintrag bezahlen?", todos["Anlass_Person"].unique())
         
         if st.button("Als 'Erledigt' markieren"):
-            # Update Logik im DataFrame
             mask = (df["Anlass_Person"] == entry_to_close) & (df["Status"] == "Offen")
             df.loc[mask, "Status"] = "Erledigt"
             
-            conn.update(worksheet="Buchungen", data=df)
+            # AUCH HIER: URL direkt übergeben!
+            conn.update(spreadsheet=SHEET_URL, worksheet="Buchungen", data=df)
             st.success("Markiert! Bitte neu laden.")
 
 # ==============================================================================
@@ -159,4 +151,3 @@ elif menu == "💸 Offene Zahlungen":
 elif menu == "📄 Dokumente":
     st.header("📄 Generator")
     st.info("Funktion bereit. Bitte 'vorlage_antrag.docx' auf GitHub hochladen.")
-    # Hier kommt später der Code für docxtpl rein, wenn die Datei da ist.
