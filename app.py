@@ -149,7 +149,7 @@ elif menu == "✍️ Neue Buchung":
                 updated_df = pd.concat([df, new_entry], ignore_index=True)
                 conn.update(worksheet="Buchungen", data=updated_df)
                 st.success("Buchung gespeichert!")
-                st.rerun()
+                #st.rerun()
 
 # ==============================================================================
 # 3. OFFENE ZAHLUNGEN (DEIN BEREICH)
