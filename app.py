@@ -26,7 +26,7 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 try:
     df = load_data(conn)
 except Exception as e:
-    st.error("Verbindung fehlgeschlagen. Ist das Sheet leer oder der Link falsch?")
+    st.error(f"Genauer Fehler: {e}")
     st.stop()
 
 # --- SIDEBAR MENÜ ---
