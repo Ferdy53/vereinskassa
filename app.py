@@ -11,7 +11,7 @@ st.set_page_config(page_title="Vereins-Cockpit", layout="wide", page_icon="⛪")
 # --- HILFSFUNKTIONEN ---
 def load_data(conn):
     # Lädt Spalten A bis H (8 Spalten)
-    df = conn.read(worksheet="Buchungen", usecols=list(range(8)), ttl=0)
+    df = conn.read(usecols=list(range(8)), ttl=0)
     df = df.dropna(how="all")
     # Datums-Konvertierung erzwingen (Tag zuerst, z.B. 01.01.2024)
     df["Datum"] = pd.to_datetime(df["Datum"], dayfirst=True, errors='coerce')
