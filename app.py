@@ -148,6 +148,76 @@ elif menu == "💸 Offene Zahlungen":
 # ==============================================================================
 # 4. DOKUMENTE
 # ==============================================================================
+# ==============================================================================
+# 4. DOKUMENTE
+# ==============================================================================
 elif menu == "📄 Dokumente":
-    st.header("📄 Generator")
-    st.info("Funktion bereit. Bitte 'vorlage_antrag.docx' auf GitHub hochladen.")
+    from docxtpl import DocxTemplate # Wird nur hier geladen, um Fehler zu vermeiden
+    
+    st.header("📄 Förderantrags-Generator")
+    
+    # 1. Eingabefelder (Basierend auf deiner Vorlage)
+    with st.form("antrags_form"):
+        st.subheader("Details zur Veranstaltung")
+        
+        c1, c2 = st.columns(2)
+        bezeichnung_in = c1.text_input("Bezeichnung des Projekts")
+        ort_in = c2.text_input("Ort der Veranstaltung")
+        
+        c3, c4 = st.columns(2)
+        gruppe_in = c3.selectbox("Gruppe", ["Jungschar", "Minis", "KJ", "Firmlinge"])
+        pfarre_in = c4.text_input("Pfarrgemeinde")
+
+        c5, c6, c7 = st.columns(3)
+        kids_in = c5.number_input("Anzahl Kinder/Jugendliche", min_value=0)
+        begleiter_in = c6.number_input("Anzahl Begleitpersonen", min_value=0)
+        naechtigungen_in = c7.number_input("Anzahl Nächtigungen (Lager)", min_value=0)
+        
+        datum_in = st.text_input("Dauer der Veranstaltung (Datum von - bis)", placeholder="z.B. 01.08. - 05.08.2026")
+        
+        st.subheader("Finanzen & Antragsteller")
+        gesamtsumme_in = st.number_input("Gesamtsumme (€)", min_value=1.00, format="%.2f")
+        antragsteller_in = st.text_input("Antragsteller*in (Name, Datum)")
+        adresse_in = st.text_input("Adresse")
+        kontodaten_in = st.text_input("Kontodaten (IBAN)")
+        
+        submitted = st.form_submit_button("Antrag erstellen")
+
+    if submitted:
+        # 2. Daten ins Word-Dokument einfügen (Context)
+        context = {
+            "bezeichnung": bezeichnung_in,
+            "ort": ort_in,
+            "gruppe": gruppe_in,
+            "pfarrgemeinde": pfarre_in,
+            "anzahl_kids": kids_in,
+            "anzahl_begleiter": begleiter_in,
+            "naechtigungen": naechtigungen_in,
+            "datum_von_bis": datum_in,
+            "gesamtsumme": f"{gesamtsumme_in:,.2f}", # Formatierung mit Komma
+            "antragsteller": antragsteller_in,
+            "adresse": adresse_in,
+            "kontodaten": kontodaten_in,
+            "name_datum": f"{antragsteller_in}, {date.today().strftime('%d.%m.%Y')}"
+        }
+        
+        try:
+            doc = DocxTemplate("vorlage_antrag.docx")
+            doc.render(context)
+            
+            # Speichern in Memory Stream für Download
+            bio = io.BytesIO()
+            doc.save(bio)
+            
+            st.download_button(
+                label="📥 Antrag herunterladen",
+                data=bio.getvalue(),
+                file_name=f"Foerderantrag_{bezeichnung_in}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+            st.success("Dokument generiert und bereit zum Download.")
+            
+        except FileNotFoundError:
+            st.error("Fehler: 'vorlage_antrag.docx' nicht gefunden. Bitte prüfen Sie den Dateinamen auf GitHub.")
+        except Exception as e:
+            st.error(f"Fehler beim Erstellen des Dokuments. Möglicherweise ein ungültiger Platzhalter. ({e})")
