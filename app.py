@@ -10,6 +10,7 @@ st.set_page_config(page_title="Vereins-Cockpit", layout="wide", page_icon="⛪")
 # --- HILFSFUNKTIONEN ---
 def load_data(conn):
     # Lädt Daten (ohne expliziten Worksheet-Namen, um Fehler zu vermeiden)
+    SHEET_ID = "https://docs.google.com/spreadsheets/d/1zV6UCDkalRRk9auLXYfJb_kMGEwUAJ_lUHxktNkyCOw/edit"
     df = conn.read(usecols=list(range(8)), ttl=0)
     df = df.dropna(how="all")
     
