@@ -362,7 +362,8 @@ elif menu == "📈 Projekt-Analyse":
                 "Art": ["Einnahmen", "Ausgaben"],
                 "Betrag": [total_in, total_out]
             })
-            st.bar_chart(chart_data, x="Art", y="Betrag", color=["#00AA00", "#FF0000"]) # Grün/Rot ist leider in simple charts schwer, Streamlit nimmt Standardfarben
+            # Wir lassen Streamlit die Farben automatisch wählen (basierend auf der Art)
+            st.bar_chart(chart_data, x="Art", y="Betrag", color="Art") # Grün/Rot ist leider in simple charts schwer, Streamlit nimmt Standardfarben
             # Alternativ einfaches Chart:
             # st.bar_chart(chart_data.set_index("Art"))
 
