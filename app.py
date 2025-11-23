@@ -55,7 +55,11 @@ if menu == "📊 Cockpit & Journal":
     col1, col2, col3 = st.columns(3)
     col1.metric("💰 Verfügbares Budget", f"{budget:,.2f} €")
     col2.metric("🏦 Kontostand (Real)", f"{bank_real:,.2f} €", delta=f"- {offen_summe:.2f} € offen", delta_color="inverse")
-    col3.metric("📄 Offene Rechnungen", f"{len(offen_df)} Stück")
+    col3.metric(
+    label="📄 Offene Posten", # <--- Beschriftung geändert
+    value=f"{len(offen_df)} Stück",
+    help="Anzahl der Transaktionen (Einnahmen/Ausgaben) mit Status 'Offen'"
+)
     
     st.markdown("---")
     st.subheader("Buchungsjournal")
