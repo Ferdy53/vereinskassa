@@ -49,7 +49,8 @@ if menu == "📊 Cockpit & Journal":
     budget = df["Einnahme"].sum() - df["Ausgabe"].sum()
     real_df = df[df["Status"] == "Erledigt"]
     bank_real = real_df["Einnahme"].sum() - real_df["Ausgabe"].sum()
-    offen_df = df[(df["Status"] == "Offen") & (df["Ausgabe"] > 0)]
+    # NEU: Zählt alle offenen Posten (Ausgabe > 0 ODER Einnahme > 0)
+    offen_df = df[(df["Status"] == "Offen") & ((df["Ausgabe"] > 0) | (df["Einnahme"] > 0))]
     offen_summe = offen_df["Ausgabe"].sum()
 
     col1, col2, col3 = st.columns(3)
