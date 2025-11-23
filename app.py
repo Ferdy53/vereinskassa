@@ -141,7 +141,17 @@ elif menu == "💸 Offene Zahlungen":
     if todos.empty:
         st.success("Alles erledigt! 🎉")
     else:
-        st.dataframe(todos)
+       # Hier ist der Code, der die Tabelle anzeigt:
+        st.dataframe(
+        todos,
+        use_container_width=True,
+        column_config={
+            # Nur das Datum anzeigen, im deutschen Format
+            "Datum": st.column_config.DateColumn(format="DD.MM.YYYY"), 
+            "Einnahme": st.column_config.NumberColumn(format="%.2f €"),
+            "Ausgabe": st.column_config.NumberColumn(format="%.2f €"),
+        }
+    )
         entry_to_close = st.selectbox("Welchen Eintrag bezahlen?", todos["Anlass_Person"].unique())
         
         if st.button("Als 'Erledigt' markieren"):
