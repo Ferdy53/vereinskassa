@@ -3,3 +3,4 @@ pandas
 st-gsheets-connection
 docxtpl
 openpyxl
+xlsxwriter
