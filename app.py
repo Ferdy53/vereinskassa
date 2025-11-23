@@ -343,7 +343,7 @@ elif menu == "🔐 Zugangsdaten":
         
         st.subheader("🏦 Bankverbindung (N26)")
         st.info(f"**IBAN:** {st.secrets['credentials']['bank_iban']}")
-        st.markdown(f"👉 **[Hier klicken zum Online-Banking]({st.secrets['credentials']['bank_login_link']})**")
+        st.markdown(f"👉 **[Hier klicken zum Online-Banking]({st.secrets['credentials']['bank_PIN']})**")
         
         st.markdown("---")
         
