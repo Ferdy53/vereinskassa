@@ -105,7 +105,7 @@ elif menu == "✍️ Neue Buchung":
                 rechnung_txt = "Ja" if rechnung_in else "Nein"
                 
                 new_entry = pd.DataFrame([{
-                    "Datum": datum_in.strftime("%Y-%m-%d"),
+                    "Datum": datum_in.isoformat(),
                     "Anlass_Person": anlass_in,
                     "Einnahme": einnahme_val,
                     "Ausgabe": ausgabe_val,
