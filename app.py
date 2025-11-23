@@ -48,7 +48,7 @@ except Exception as e:
 
 # --- SIDEBAR MENÜ ---
 st.sidebar.title("⛪ Hatler Minis")
-menu = st.sidebar.radio("Menü", ["📊 Cockpit & Journal", "✍️ Neue Buchung", "💸 Offene Zahlungen", "📄 Dokumente", '✅ Kassenprüfung', "🔐 Zugangsdaten"])
+menu = st.sidebar.radio("Menü", ["📊 Cockpit & Journal", "✍️ Neue Buchung", "💸 Offene Zahlungen", "📈 Projekt-Analyse", "📄 Dokumente", '✅ Kassenprüfung', "🔐 Zugangsdaten"])
 
 # ==============================================================================
 # 1. COCKPIT & JOURNAL
@@ -313,6 +313,73 @@ elif menu == '✅ Kassenprüfung':
                         st.success("Gespeichert!")
                         st.rerun()
 
+# ==============================================================================
+# PROJEKT ANALYSE
+# ==============================================================================
+elif menu == "📈 Projekt-Analyse":
+    st.header("📈 Projekt-Check")
+    st.info("Tippe ein Stichwort ein, um zu sehen, ob sich eine Aktion finanziell gelohnt hat.")
+
+    # 1. Suchfeld
+    search_term = st.text_input("Nach welcher Aktion suchen?", placeholder="z.B. Basteln, Lager, Kaffee")
+
+    if search_term:
+        # 2. Filtern
+        # Wir suchen das Wort in 'Anlass_Person' ODER 'Bemerkung' (Groß-/Kleinschreibung egal)
+        mask = (df['Anlass_Person'].astype(str).str.contains(search_term, case=False, na=False)) | \
+               (df['Bemerkung'].astype(str).str.contains(search_term, case=False, na=False))
+        
+        project_df = df[mask]
+
+        if project_df.empty:
+            st.warning(f"Keine Buchungen zum Stichwort '{search_term}' gefunden.")
+        else:
+            # 3. Berechnen
+            total_in = project_df['Einnahme'].sum()
+            total_out = project_df['Ausgabe'].sum()
+            ergebnis = total_in - total_out
+
+            # 4. Das Ergebnis groß anzeigen
+            st.markdown(f"### Ergebnis für: *{search_term}*")
+            
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Summe Einnahmen", f"{total_in:,.2f} €")
+            c2.metric("Summe Ausgaben", f"{total_out:,.2f} €")
+            
+            # Farbe je nach Gewinn oder Verlust
+            c3.metric(
+                label="Gewinn / Verlust", 
+                value=f"{ergebnis:,.2f} €", 
+                delta=f"{ergebnis:,.2f} €",
+                delta_color="normal" # Grün bei Plus, Rot bei Minus
+            )
+
+            st.markdown("---")
+            
+            # 5. Diagramm (Balken)
+            # Wir bauen einen kleinen DataFrame für das Diagramm
+            chart_data = pd.DataFrame({
+                "Art": ["Einnahmen", "Ausgaben"],
+                "Betrag": [total_in, total_out]
+            })
+            st.bar_chart(chart_data, x="Art", y="Betrag", color=["#00AA00", "#FF0000"]) # Grün/Rot ist leider in simple charts schwer, Streamlit nimmt Standardfarben
+            # Alternativ einfaches Chart:
+            # st.bar_chart(chart_data.set_index("Art"))
+
+            st.markdown("---")
+            st.subheader("Gefundene Buchungen:")
+            
+            # Tabelle der gefilterten Einträge anzeigen
+            st.dataframe(
+                project_df[['Datum', 'Anlass_Person', 'Einnahme', 'Ausgabe', 'Bemerkung']].sort_index(ascending=False),
+                use_container_width=True,
+                column_config={
+                    "Datum": st.column_config.DateColumn(format="DD.MM.YYYY"),
+                    "Einnahme": st.column_config.NumberColumn(format="%.2f €"),
+                    "Ausgabe": st.column_config.NumberColumn(format="%.2f €"),
+                }
+            )
+            
 # ==============================================================================
 # 6. ZUGANGSDATEN (PASSWORTGESCHÜTZT)
 # ==============================================================================
