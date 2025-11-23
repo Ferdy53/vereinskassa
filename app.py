@@ -128,7 +128,9 @@ elif menu == "✍️ Neue Buchung":
 elif menu == "💸 Offene Zahlungen":
     st.header("💸 Offene Überweisungen")
     
-    mask_offen = (df["Status"] == "Offen") & (df["Ausgabe"] > 0)
+   # KORREKTUR: Zeigt ALLE Posten an (Einnahmen UND Ausgaben), solange der Status "Offen" ist
+# ( | ist das logische ODER in Python)
+mask_offen = (df["Status"] == "Offen") & ((df["Ausgabe"] > 0) | (df["Einnahme"] > 0))
     todos = df[mask_offen].copy()
     
     if todos.empty:
