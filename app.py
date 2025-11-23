@@ -13,7 +13,7 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/1zV6UCDkalRRk9auLXYfJb_kMGEw
 # --- HILFSFUNKTIONEN ---
 def load_data(conn):
     # Wir zwingen ihn, diese URL zu nutzen
-    df = conn.read(spreadsheet=SHEET_URL, usecols=list(range(8)), ttl=0)
+    df = conn.read(spreadsheet=SHEET_URL, usecols=list(range(10)), ttl=0)
     df = df.dropna(how="all")
     
     # Datums-Konvertierung
@@ -238,3 +238,67 @@ elif menu == "📄 Dokumente":
             st.error("Fehler: 'vorlage_antrag.docx' nicht gefunden. Bitte prüfen Sie den Dateinamen auf GitHub.")
         except Exception as e:
             st.error(f"Fehler beim Erstellen des Dokuments. Möglicherweise ein ungültiger Platzhalter. ({e})")
+
+# ==============================================================================
+# 5. KASSENPRÜFUNG
+# ==============================================================================
+elif menu == '✅ Kassenprüfung':
+    st.header("✅ Kassenprüfung")
+
+    # 1. Filtern: Wir suchen Zeilen, wo 'Pruefung_OK' noch leer ist
+    # (Wir müssen sicherstellen, dass die Spalte existiert, falls das Sheet neu ist)
+    if 'Pruefung_OK' not in df.columns:
+        st.error("Spalte 'Pruefung_OK' fehlt im Google Sheet! Bitte Schritt 1 ausführen.")
+    else:
+        unverified_df = df[df['Pruefung_OK'].isnull() | (df['Pruefung_OK'] == "")]
+        
+        if unverified_df.empty:
+            st.success("🎉 Alles erledigt! Keine ungeprüften Posten mehr.")
+            
+            # Export für die Prüfer
+            excel_data = to_excel(df)
+            st.download_button(
+                label="⬇️ Geprüften Bericht herunterladen (Excel)",
+                data=excel_data,
+                file_name=f'Kassenbericht_GEPRÜFT_{date.today()}.xlsx',
+                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+        else:
+            # 2. Den ersten offenen Fall anzeigen
+            current_idx = unverified_df.index[0]
+            row = df.loc[current_idx]
+            
+            st.info(f"Noch {len(unverified_df)} Posten zu prüfen.")
+            
+            # Anzeigekasten für den aktuellen Posten
+            with st.container(border=True):
+                st.subheader(f"📅 {row['Datum'].strftime('%d.%m.%Y') if pd.notnull(row['Datum']) else 'Kein Datum'}")
+                st.write(f"**Anlass/Person:** {row['Anlass_Person']}")
+                
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Einnahme", f"{row['Einnahme']:.2f} €")
+                c2.metric("Ausgabe", f"{row['Ausgabe']:.2f} €")
+                c3.metric("Konto", row['Konto'])
+                
+                st.write(f"**Bemerkung:** {row['Bemerkung']}")
+                st.write(f"**Rechnung vorhanden?** {row['Rechnung_Vorhanden']}")
+            
+            st.write("---")
+            
+            # 3. Das Prüf-Formular
+            with st.form("audit_form"):
+                status = st.radio("Ergebnis der Prüfung:", ["OK ✅", "Fehler ❌", "Überspringen ⏭️"], horizontal=True)
+                bemerkung = st.text_input("Notiz des Prüfers (bei Fehler Pflicht)")
+                
+                if st.form_submit_button("Entscheidung speichern"):
+                    if status == "Überspringen ⏭️":
+                        st.warning("Übersprungen.")
+                    else:
+                        # Daten schreiben
+                        df.loc[current_idx, 'Pruefung_OK'] = status
+                        df.loc[current_idx, 'Pruefung_Bemerkung'] = bemerkung
+                        
+                        # Speichern
+                        conn.update(spreadsheet=SHEET_URL, worksheet="Buchungen", data=df)
+                        st.success("Gespeichert!")
+                        st.rerun()
