@@ -38,7 +38,7 @@ except Exception as e:
 
 # --- SIDEBAR MENÜ ---
 st.sidebar.title("⛪ Hatler Minis")
-menu = st.sidebar.radio("Menü", ["📊 Cockpit & Journal", "✍️ Neue Buchung", "💸 Offene Zahlungen", "📄 Dokumente"])
+menu = st.sidebar.radio("Menü", ["📊 Cockpit & Journal", "✍️ Neue Buchung", "💸 Offene Zahlungen", "📄 Dokumente", '✅ Kassenprüfung'])
 
 # ==============================================================================
 # 1. COCKPIT & JOURNAL
