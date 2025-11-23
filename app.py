@@ -48,7 +48,7 @@ except Exception as e:
 
 # --- SIDEBAR MENÜ ---
 st.sidebar.title("⛪ Hatler Minis")
-menu = st.sidebar.radio("Menü", ["📊 Cockpit & Journal", "✍️ Neue Buchung", "💸 Offene Zahlungen", "📄 Dokumente", '✅ Kassenprüfung'])
+menu = st.sidebar.radio("Menü", ["📊 Cockpit & Journal", "✍️ Neue Buchung", "💸 Offene Zahlungen", "📄 Dokumente", '✅ Kassenprüfung', "🔐 Zugangsdaten"])
 
 # ==============================================================================
 # 1. COCKPIT & JOURNAL
@@ -312,3 +312,50 @@ elif menu == '✅ Kassenprüfung':
                         conn.update(spreadsheet=SHEET_URL, worksheet="Buchungen", data=df)
                         st.success("Gespeichert!")
                         st.rerun()
+
+# ==============================================================================
+# 6. ZUGANGSDATEN (PASSWORTGESCHÜTZT)
+# ==============================================================================
+elif menu == "🔐 Zugangsdaten":
+    st.header("🔐 Geschützter Bereich")
+
+    # Prüfen, ob man schon eingeloggt ist
+    if "authenticated" not in st.session_state:
+        st.session_state.authenticated = False
+
+    # -- SPERRBILDSCHIRM (Wenn nicht eingeloggt) --
+    if not st.session_state.authenticated:
+        st.info("Dieser Bereich ist geschützt. Bitte Passwort eingeben.")
+        
+        password = st.text_input("Passwort", type="password")
+        
+        if st.button("Einloggen"):
+            # Passwort prüfen (Vergleich mit Secrets)
+            if password == st.secrets["credentials"]["admin_password"]:
+                st.session_state.authenticated = True
+                st.rerun() # Seite neu laden
+            else:
+                st.error("Falsches Passwort!")
+
+    # -- INHALT (Wenn eingeloggt) --
+    else:
+        st.success("Zugriff gewährt ✅")
+        
+        st.subheader("🏦 Bankverbindung (N26)")
+        st.info(f"**IBAN:** {st.secrets['credentials']['bank_iban']}")
+        st.markdown(f"👉 **[Hier klicken zum Online-Banking]({st.secrets['credentials']['bank_login_link']})**")
+        
+        st.markdown("---")
+        
+        st.subheader("📚 Vereins-Infos")
+        st.write("Hier sind wichtige Links für den Kassier:")
+        if "leitfaden_link" in st.secrets["credentials"]:
+            st.markdown(f"📄 **[Kassen-Leitfaden öffnen]({st.secrets['credentials']['leitfaden_link']})**")
+        else:
+            st.write("(Noch kein Leitfaden-Link hinterlegt)")
+
+        st.markdown("---")
+        
+        if st.button("Ausloggen 🔒"):
+            st.session_state.authenticated = False
+            st.rerun()
