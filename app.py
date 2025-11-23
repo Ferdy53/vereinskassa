@@ -10,17 +10,6 @@ st.set_page_config(page_title="Vereins-Cockpit", layout="wide", page_icon="⛪")
 # DER LINK ZUR TABELLE (Fest eingebaut)
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1zV6UCDkalRRk9auLXYfJb_kMGEwUAJ_lUHxktNkyCOw/edit"
 
-import io # Stelle sicher, dass das importiert ist!
-import xlsxwriter # Das wird für den Excel-Export gebraucht
-
-# --- HILFSFUNKTION: EXCEL EXPORT ---
-def to_excel(df):
-    output = io.BytesIO()
-    # Wir nutzen xlsxwriter als Engine
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Kassenbuch')
-    output.seek(0)
-    return output.read()
 # --- HILFSFUNKTIONEN ---
 def load_data(conn):
     # Wir zwingen ihn, diese URL zu nutzen
