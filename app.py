@@ -3,6 +3,16 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, date
 import io
+import xlsxwriter # Das wird für den Excel-Export gebraucht
+
+# --- HILFSFUNKTION: EXCEL EXPORT ---
+def to_excel(df):
+    output = io.BytesIO()
+    # Wir nutzen xlsxwriter als Engine
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Kassenbuch')
+    output.seek(0)
+    return output.read()
 
 # --- KONFIGURATION ---
 st.set_page_config(page_title="Vereins-Cockpit", layout="wide", page_icon="⛪")
