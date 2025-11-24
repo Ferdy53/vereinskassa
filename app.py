@@ -103,7 +103,7 @@ elif menu == "✍️ Neue Buchung":
         bemerkung_in = st.text_input("Bemerkung")
         
         c1, c2, c3 = st.columns(3)
-        konto_in = c1.selectbox("Konto", ["Bank", "Handkassa", "Minikonto"])
+        konto_in = c1.selectbox("Konto", ["Handkassa", "Minikonto"])
         rechnung_in = c2.checkbox("Rechnung vorhanden?", value=True)
         
         status_default = "Offen" if konto_in == "Bank" else "Erledigt"
