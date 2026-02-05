@@ -3,12 +3,11 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 from datetime import datetime, date
 import io
-import xlsxwriter # Das wird für den Excel-Export gebraucht
+import xlsxwriter 
 
 # --- HILFSFUNKTION: EXCEL EXPORT ---
 def to_excel(df):
     output = io.BytesIO()
-    # Wir nutzen xlsxwriter als Engine
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Kassenbuch')
     output.seek(0)
@@ -17,25 +16,30 @@ def to_excel(df):
 # --- KONFIGURATION ---
 st.set_page_config(page_title="Vereins-Cockpit", layout="wide", page_icon="⛪")
 
-# DER LINK ZUR TABELLE (Fest eingebaut)
+# DER LINK ZUR TABELLE
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1zV6UCDkalRRk9auLXYfJb_kMGEwUAJ_lUHxktNkyCOw/edit"
 
 # --- HILFSFUNKTIONEN ---
 def load_data(conn):
-    # Wir zwingen ihn, diese URL zu nutzen
+    # Daten laden (alle 10 Spalten)
     df = conn.read(spreadsheet=SHEET_URL, usecols=list(range(10)), ttl=0)
+    
+    # 1. Zeilen löschen, die komplett leer sind
     df = df.dropna(how="all")
     
-    # Datums-Konvertierung
-    df["Datum"] = pd.to_datetime(df["Datum"], dayfirst=True, errors='coerce')
+    # 2. Datum-Fix: Konvertieren und Uhrzeit entfernen
+    if "Datum" in df.columns:
+        # Zwingt alles in ein Datumsformat, kaputte Werte werden "NaT"
+        df["Datum"] = pd.to_datetime(df["Datum"], errors='coerce')
+        # Uhrzeit abschneiden -> Nur noch das reine Datum behalten
+        df["Datum"] = df["Datum"].dt.date
     
-    # Euro-Zeichen und Komma bereinigen
+    # 3. Zahlen-Bereinigung
     if not df.empty:
-        df["Einnahme"] = df["Einnahme"].astype(str).str.replace('€', '', regex=False).str.replace(',', '.', regex=False)
-        df["Ausgabe"] = df["Ausgabe"].astype(str).str.replace('€', '', regex=False).str.replace(',', '.', regex=False)
-        df["Einnahme"] = pd.to_numeric(df["Einnahme"], errors='coerce').fillna(0.0)
-        df["Ausgabe"] = pd.to_numeric(df["Ausgabe"], errors='coerce').fillna(0.0)
-        
+        for col in ["Einnahme", "Ausgabe"]:
+            df[col] = df[col].astype(str).str.replace('€', '', regex=False).str.replace(',', '.', regex=False)
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            
     return df
 
 # --- VERBINDUNG ---
@@ -59,29 +63,26 @@ if menu == "📊 Cockpit & Journal":
     budget = df["Einnahme"].sum() - df["Ausgabe"].sum()
     real_df = df[df["Status"] == "Erledigt"]
     bank_real = real_df["Einnahme"].sum() - real_df["Ausgabe"].sum()
-    # NEU: Zählt alle offenen Posten (Ausgabe > 0 ODER Einnahme > 0)
+    
     offen_df = df[(df["Status"] == "Offen") & ((df["Ausgabe"] > 0) | (df["Einnahme"] > 0))]
     offen_summe = offen_df["Ausgabe"].sum()
 
     col1, col2, col3 = st.columns(3)
     col1.metric("💰 Verfügbares Budget", f"{budget:,.2f} €")
     col2.metric("🏦 Kontostand (N26)", f"{bank_real:,.2f} €", delta=f"- {offen_summe:.2f} € offen", delta_color="inverse")
-    col3.metric(
-    label="📄 Offene Posten", # <--- Beschriftung geändert
-    value=f"{len(offen_df)} Stück",
-    help="Anzahl der Transaktionen (Einnahmen/Ausgaben) mit Status 'Offen'"
-)
+    col3.metric(label="📄 Offene Posten", value=f"{len(offen_df)} Stück")
     
     st.markdown("---")
     st.subheader("Buchungsjournal")
     
-    display_df = df.copy()
-    display_df["Datum"] = display_df["Datum"].dt.strftime("%d.%m.%Y")
+    # Sortieren: Neueste oben
+    display_df = df.sort_values(by="Datum", ascending=False)
     
     st.dataframe(
-        display_df.sort_index(ascending=False), 
+        display_df, 
         use_container_width=True,
         column_config={
+            "Datum": st.column_config.DateColumn("Datum", format="DD.MM.YYYY"),
             "Einnahme": st.column_config.NumberColumn(format="%.2f €"),
             "Ausgabe": st.column_config.NumberColumn(format="%.2f €"),
         }
@@ -106,7 +107,7 @@ elif menu == "✍️ Neue Buchung":
         konto_in = c1.selectbox("Konto", ["Minikonto", "Handkassa"])
         rechnung_in = c2.checkbox("Rechnung vorhanden?", value=True)
         
-        status_default = "Offen" if konto_in == "Bank" else "Erledigt"
+        status_default = "Offen" if konto_in == "Minikonto" else "Erledigt"
         status_in = c3.selectbox("Status", ["Offen", "Erledigt"], index=0 if status_default=="Offen" else 1)
         
         submitted = st.form_submit_button("Speichern")
@@ -119,23 +120,24 @@ elif menu == "✍️ Neue Buchung":
                 ausgabe_val = betrag_in if typ == "Ausgabe" else 0.0
                 rechnung_txt = "Ja" if rechnung_in else "Nein"
                 
-                new_entry = pd.DataFrame([{
-                    "Datum": datum_in.isoformat(),
-                    "Anlass_Person": anlass_in,
-                    "Einnahme": einnahme_val,
-                    "Ausgabe": ausgabe_val,
-                    "Bemerkung": bemerkung_in,
-                    "Konto": konto_in,
-                    "Rechnung_Vorhanden": rechnung_txt,
-                    "Status": status_in
-                }])
+                # Die neue Zeile exakt vorbereiten
+                new_row = [
+                    datum_in.strftime('%Y-%m-%d'), 
+                    anlass_in,
+                    einnahme_val,
+                    ausgabe_val,
+                    bemerkung_in,
+                    konto_in,
+                    rechnung_txt,
+                    status_in,
+                    "", # Pruefung_OK
+                    ""  # Pruefung_Bemerkung
+                ]
                 
-                updated_df = pd.concat([df, new_entry], ignore_index=True)
-                
-                # AUCH HIER: URL direkt übergeben!
-                conn.update(spreadsheet=SHEET_URL, worksheet="Buchungen", data=updated_df)
-                
-                st.success("Gespeichert! Bitte Seite neu laden (F5).")
+                # Anhängen statt Überschreiben
+                conn.create(spreadsheet=SHEET_URL, worksheet="Buchungen", data=[new_row])
+                st.success("Gespeichert!")
+                st.rerun()
 
 # ==============================================================================
 # 3. OFFENE ZAHLUNGEN
@@ -143,50 +145,39 @@ elif menu == "✍️ Neue Buchung":
 elif menu == "💸 Offene Zahlungen":
     st.header("💸 Offene Überweisungen")
     
-   # KORREKTUR: Zeigt ALLE Posten an (Einnahmen UND Ausgaben), solange der Status "Offen" ist
-# ( | ist das logische ODER in Python)
     mask_offen = (df["Status"] == "Offen") & ((df["Ausgabe"] > 0) | (df["Einnahme"] > 0))
     todos = df[mask_offen].copy()
     
     if todos.empty:
         st.success("Alles erledigt! 🎉")
     else:
-       # Hier ist der Code, der die Tabelle anzeigt:
         st.dataframe(
-        todos,
-        use_container_width=True,
-        column_config={
-            # Nur das Datum anzeigen, im deutschen Format
-            "Datum": st.column_config.DateColumn(format="DD.MM.YYYY"), 
-            "Einnahme": st.column_config.NumberColumn(format="%.2f €"),
-            "Ausgabe": st.column_config.NumberColumn(format="%.2f €"),
-        }
-    )
+            todos,
+            use_container_width=True,
+            column_config={
+                "Datum": st.column_config.DateColumn(format="DD.MM.YYYY"), 
+                "Einnahme": st.column_config.NumberColumn(format="%.2f €"),
+                "Ausgabe": st.column_config.NumberColumn(format="%.2f €"),
+            }
+        )
         entry_to_close = st.selectbox("Welchen Eintrag bezahlen?", todos["Anlass_Person"].unique())
         
         if st.button("Als 'Erledigt' markieren"):
             mask = (df["Anlass_Person"] == entry_to_close) & (df["Status"] == "Offen")
             df.loc[mask, "Status"] = "Erledigt"
-            
-            # AUCH HIER: URL direkt übergeben!
             conn.update(spreadsheet=SHEET_URL, worksheet="Buchungen", data=df)
-            st.success("Markiert! Bitte neu laden.")
+            st.success("Markiert!")
+            st.rerun()
 
 # ==============================================================================
 # 4. DOKUMENTE
 # ==============================================================================
-# ==============================================================================
-# 4. DOKUMENTE
-# ==============================================================================
 elif menu == "📄 Dokumente":
-    from docxtpl import DocxTemplate # Wird nur hier geladen, um Fehler zu vermeiden
-    
+    from docxtpl import DocxTemplate 
     st.header("📄 Förderantrags-Generator")
     
-    # 1. Eingabefelder (Basierend auf deiner Vorlage)
     with st.form("antrags_form"):
         st.subheader("Details zur Veranstaltung")
-        
         c1, c2 = st.columns(2)
         bezeichnung_in = c1.text_input("Bezeichnung des Projekts")
         ort_in = c2.text_input("Ort der Veranstaltung")
@@ -200,18 +191,17 @@ elif menu == "📄 Dokumente":
         begleiter_in = c6.number_input("Anzahl Begleitpersonen", min_value=0)
         naechtigungen_in = c7.number_input("Anzahl Nächtigungen (Lager)", min_value=0)
         
-        datum_in = st.text_input("Dauer der Veranstaltung (Datum von - bis)", placeholder="z.B. 01.08. - 05.08.2026")
+        datum_range = st.text_input("Dauer (Datum von - bis)", placeholder="z.B. 01.08. - 05.08.2026")
         
         st.subheader("Finanzen & Antragsteller")
         gesamtsumme_in = st.number_input("Gesamtsumme (€)", min_value=1.00, format="%.2f")
-        antragsteller_in = st.text_input("Antragsteller*in (Name, Datum)")
+        antragsteller_in = st.text_input("Antragsteller*in (Name)")
         adresse_in = st.text_input("Adresse")
         kontodaten_in = st.text_input("Kontodaten (IBAN)")
         
         submitted = st.form_submit_button("Antrag erstellen")
 
     if submitted:
-        # 2. Daten ins Word-Dokument einfügen (Context)
         context = {
             "bezeichnung": bezeichnung_in,
             "ort": ort_in,
@@ -220,8 +210,8 @@ elif menu == "📄 Dokumente":
             "anzahl_kids": kids_in,
             "anzahl_begleiter": begleiter_in,
             "naechtigungen": naechtigungen_in,
-            "datum_von_bis": datum_in,
-            "gesamtsumme": f"{gesamtsumme_in:,.2f}", # Formatierung mit Komma
+            "datum_von_bis": datum_range,
+            "gesamtsumme": f"{gesamtsumme_in:,.2f}",
             "antragsteller": antragsteller_in,
             "adresse": adresse_in,
             "kontodaten": kontodaten_in,
@@ -231,23 +221,16 @@ elif menu == "📄 Dokumente":
         try:
             doc = DocxTemplate("vorlage_antrag.docx")
             doc.render(context)
-            
-            # Speichern in Memory Stream für Download
             bio = io.BytesIO()
             doc.save(bio)
-            
             st.download_button(
                 label="📥 Antrag herunterladen",
                 data=bio.getvalue(),
                 file_name=f"Foerderantrag_{bezeichnung_in}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             )
-            st.success("Dokument generiert und bereit zum Download.")
-            
-        except FileNotFoundError:
-            st.error("Fehler: 'vorlage_antrag.docx' nicht gefunden. Bitte prüfen Sie den Dateinamen auf GitHub.")
         except Exception as e:
-            st.error(f"Fehler beim Erstellen des Dokuments. Möglicherweise ein ungültiger Platzhalter. ({e})")
+            st.error(f"Fehler: {e}")
 
 # ==============================================================================
 # 5. KASSENPRÜFUNG
@@ -255,175 +238,66 @@ elif menu == "📄 Dokumente":
 elif menu == '✅ Kassenprüfung':
     st.header("✅ Kassenprüfung")
 
-    # 1. Filtern: Wir suchen Zeilen, wo 'Pruefung_OK' noch leer ist
-    # (Wir müssen sicherstellen, dass die Spalte existiert, falls das Sheet neu ist)
     if 'Pruefung_OK' not in df.columns:
-        st.error("Spalte 'Pruefung_OK' fehlt im Google Sheet! Bitte Schritt 1 ausführen.")
+        st.error("Spalte 'Pruefung_OK' fehlt im Sheet!")
     else:
         unverified_df = df[df['Pruefung_OK'].isnull() | (df['Pruefung_OK'] == "")]
         
         if unverified_df.empty:
-            st.success("🎉 Alles erledigt! Keine ungeprüften Posten mehr.")
-            
-            # Export für die Prüfer
+            st.success("🎉 Alles erledigt!")
             excel_data = to_excel(df)
-            st.download_button(
-                label="⬇️ Geprüften Bericht herunterladen (Excel)",
-                data=excel_data,
-                file_name=f'Kassenbericht_GEPRÜFT_{date.today()}.xlsx',
-                mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-            )
+            st.download_button(label="⬇️ Excel Export", data=excel_data, file_name=f'Bericht_{date.today()}.xlsx')
         else:
-            # 2. Den ersten offenen Fall anzeigen
             current_idx = unverified_df.index[0]
             row = df.loc[current_idx]
             
-            st.info(f"Noch {len(unverified_df)} Posten zu prüfen.")
-            
-            # Anzeigekasten für den aktuellen Posten
             with st.container(border=True):
-                st.subheader(f"📅 {row['Datum'].strftime('%d.%m.%Y') if pd.notnull(row['Datum']) else 'Kein Datum'}")
-                st.write(f"**Anlass/Person:** {row['Anlass_Person']}")
-                
-                c1, c2, c3 = st.columns(3)
-                c1.metric("Einnahme", f"{row['Einnahme']:.2f} €")
-                c2.metric("Ausgabe", f"{row['Ausgabe']:.2f} €")
-                c3.metric("Konto", row['Konto'])
-                
-                st.write(f"**Bemerkung:** {row['Bemerkung']}")
-                st.write(f"**Rechnung vorhanden?** {row['Rechnung_Vorhanden']}")
+                st.subheader(f"📅 {row['Datum'].strftime('%d.%m.%Y') if pd.notnull(row['Datum']) else '---'}")
+                st.write(f"**Anlass:** {row['Anlass_Person']}")
+                st.metric("Betrag", f"{row['Einnahme'] if row['Einnahme'] > 0 else row['Ausgabe']:.2f} €")
             
-            st.write("---")
-            
-            # 3. Das Prüf-Formular
             with st.form("audit_form"):
-                status = st.radio("Ergebnis der Prüfung:", ["OK ✅", "Fehler ❌", "Überspringen ⏭️"], horizontal=True)
-                bemerkung = st.text_input("Notiz des Prüfers (bei Fehler Pflicht)")
-                
-                if st.form_submit_button("Entscheidung speichern"):
-                    if status == "Überspringen ⏭️":
-                        st.warning("Übersprungen.")
-                    else:
-                        # Daten schreiben
+                status = st.radio("Prüfung:", ["OK ✅", "Fehler ❌", "Überspringen ⏭️"], horizontal=True)
+                bemerkung = st.text_input("Notiz")
+                if st.form_submit_button("Speichern"):
+                    if status != "Überspringen ⏭️":
                         df.loc[current_idx, 'Pruefung_OK'] = status
                         df.loc[current_idx, 'Pruefung_Bemerkung'] = bemerkung
-                        
-                        # Speichern
                         conn.update(spreadsheet=SHEET_URL, worksheet="Buchungen", data=df)
-                        st.success("Gespeichert!")
                         st.rerun()
 
 # ==============================================================================
-# PROJEKT ANALYSE
+# 6. PROJEKT ANALYSE
 # ==============================================================================
 elif menu == "📈 Projekt-Analyse":
     st.header("📈 Projekt-Check")
-    st.info("Tippe ein Stichwort ein, um zu sehen, ob sich eine Aktion finanziell gelohnt hat.")
-
-    # 1. Suchfeld
-    search_term = st.text_input("Nach welcher Aktion suchen?", placeholder="z.B. Basteln, Lager, Kaffee")
+    search_term = st.text_input("Stichwort (z.B. Lager)")
 
     if search_term:
-        # 2. Filtern
-        # Wir suchen das Wort in 'Anlass_Person' ODER 'Bemerkung' (Groß-/Kleinschreibung egal)
-        mask = (df['Anlass_Person'].astype(str).str.contains(search_term, case=False, na=False)) | \
-               (df['Bemerkung'].astype(str).str.contains(search_term, case=False, na=False))
-        
+        mask = (df['Anlass_Person'].astype(str).str.contains(search_term, case=False)) | \
+               (df['Bemerkung'].astype(str).str.contains(search_term, case=False))
         project_df = df[mask]
 
-        if project_df.empty:
-            st.warning(f"Keine Buchungen zum Stichwort '{search_term}' gefunden.")
-        else:
-            # 3. Berechnen
-            total_in = project_df['Einnahme'].sum()
-            total_out = project_df['Ausgabe'].sum()
-            ergebnis = total_in - total_out
+        if not project_df.empty:
+            ergebnis = project_df['Einnahme'].sum() - project_df['Ausgabe'].sum()
+            st.metric("Gewinn / Verlust", f"{ergebnis:,.2f} €", delta=f"{ergebnis:.2f} €")
+            st.dataframe(project_df, column_config={"Datum": st.column_config.DateColumn(format="DD.MM.YYYY")})
 
-            # 4. Das Ergebnis groß anzeigen
-            st.markdown(f"### Ergebnis für: *{search_term}*")
-            
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Summe Einnahmen", f"{total_in:,.2f} €")
-            c2.metric("Summe Ausgaben", f"{total_out:,.2f} €")
-            
-            # Farbe je nach Gewinn oder Verlust
-            c3.metric(
-                label="Gewinn / Verlust", 
-                value=f"{ergebnis:,.2f} €", 
-                delta=f"{ergebnis:,.2f} €",
-                delta_color="normal" # Grün bei Plus, Rot bei Minus
-            )
-
-            st.markdown("---")
-            
-            # 5. Diagramm (Balken)
-            # Wir bauen einen kleinen DataFrame für das Diagramm
-            chart_data = pd.DataFrame({
-                "Art": ["Einnahmen", "Ausgaben"],
-                "Betrag": [total_in, total_out]
-            })
-            # Wir lassen Streamlit die Farben automatisch wählen (basierend auf der Art)
-            st.bar_chart(chart_data, x="Art", y="Betrag", color="Art") # Grün/Rot ist leider in simple charts schwer, Streamlit nimmt Standardfarben
-            # Alternativ einfaches Chart:
-            # st.bar_chart(chart_data.set_index("Art"))
-
-            st.markdown("---")
-            st.subheader("Gefundene Buchungen:")
-            
-            # Tabelle der gefilterten Einträge anzeigen
-            st.dataframe(
-                project_df[['Datum', 'Anlass_Person', 'Einnahme', 'Ausgabe', 'Bemerkung']].sort_index(ascending=False),
-                use_container_width=True,
-                column_config={
-                    "Datum": st.column_config.DateColumn(format="DD.MM.YYYY"),
-                    "Einnahme": st.column_config.NumberColumn(format="%.2f €"),
-                    "Ausgabe": st.column_config.NumberColumn(format="%.2f €"),
-                }
-            )
-            
 # ==============================================================================
-# 6. ZUGANGSDATEN (PASSWORTGESCHÜTZT)
+# 7. ZUGANGSDATEN
 # ==============================================================================
 elif menu == "🔐 Zugangsdaten":
     st.header("🔐 Geschützter Bereich")
+    if "authenticated" not in st.session_state: st.session_state.authenticated = False
 
-    # Prüfen, ob man schon eingeloggt ist
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-
-    # -- SPERRBILDSCHIRM (Wenn nicht eingeloggt) --
     if not st.session_state.authenticated:
-        st.info("Dieser Bereich ist geschützt. Bitte Passwort eingeben.")
-        
         password = st.text_input("Passwort", type="password")
-        
         if st.button("Einloggen"):
-            # Passwort prüfen (Vergleich mit Secrets)
             if password == st.secrets["credentials"]["admin_password"]:
                 st.session_state.authenticated = True
-                st.rerun() # Seite neu laden
-            else:
-                st.error("Falsches Passwort!")
-
-    # -- INHALT (Wenn eingeloggt) --
+                st.rerun()
     else:
-        st.success("Zugriff gewährt ✅")
-        
-        st.subheader("🏦 Bankverbindung (N26)")
-        st.info(f"**IBAN:** {st.secrets['credentials']['bank_iban']}")
-        st.info(f"**PIN:** {st.secrets['credentials']['bank_PIN']}")
-        
-        st.markdown("---")
-        
-        st.subheader("📚 Vereins-Infos")
-        st.write("Hier sind wichtige Links für den Kassier:")
-        if "leitfaden_link" in st.secrets["credentials"]:
-            st.markdown(f"📄 **[Kassen-Leitfaden öffnen]({st.secrets['credentials']['leitfaden_link']})**")
-        else:
-            st.write("(Noch kein Leitfaden-Link hinterlegt)")
-
-        st.markdown("---")
-        
-        if st.button("Ausloggen 🔒"):
+        st.write(f"**IBAN:** {st.secrets['credentials']['bank_iban']}")
+        if st.button("Ausloggen"):
             st.session_state.authenticated = False
             st.rerun()
