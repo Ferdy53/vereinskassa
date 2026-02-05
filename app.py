@@ -120,23 +120,28 @@ elif menu == "✍️ Neue Buchung":
                 ausgabe_val = betrag_in if typ == "Ausgabe" else 0.0
                 rechnung_txt = "Ja" if rechnung_in else "Nein"
                 
-                # Die neue Zeile exakt vorbereiten
-                new_row = [
-                    datum_in.strftime('%Y-%m-%d'), 
-                    anlass_in,
-                    einnahme_val,
-                    ausgabe_val,
-                    bemerkung_in,
-                    konto_in,
-                    rechnung_txt,
-                    status_in,
-                    "", # Pruefung_OK
-                    ""  # Pruefung_Bemerkung
-                ]
+                # 1. Den neuen Datensatz als kleines DataFrame erstellen
+                # Die Spaltennamen müssen EXAKT wie im Google Sheet sein
+                new_entry = pd.DataFrame([{
+                    "Datum": datum_in, # Python-Datumsobjekt
+                    "Anlass_Person": anlass_in,
+                    "Einnahme": einnahme_val,
+                    "Ausgabe": ausgabe_val,
+                    "Bemerkung": bemerkung_in,
+                    "Konto": konto_in,
+                    "Rechnung_Vorhanden": rechnung_txt,
+                    "Status": status_in,
+                    "Pruefung_OK": "",
+                    "Pruefung_Bemerkung": ""
+                }])
                 
-                # Anhängen statt Überschreiben
-                conn.create(spreadsheet=SHEET_URL, worksheet="Buchungen", data=[new_row])
-                st.success("Gespeichert!")
+                # 2. Den neuen Eintrag an das bestehende 'df' (das wir oben geladen haben) hängen
+                updated_df = pd.concat([df, new_entry], ignore_index=True)
+                
+                # 3. Das komplette, aktualisierte DataFrame zurück zu Google schicken
+                conn.update(spreadsheet=SHEET_URL, worksheet="Buchungen", data=updated_df)
+                
+                st.success("Gespeichert! Die Seite wird neu geladen...")
                 st.rerun()
 
 # ==============================================================================
